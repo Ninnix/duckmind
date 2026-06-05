@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "duckmind"
+version = "0.1.0"
+description = "Unofficial Python client for DuckDuckGo AI Chat (duck.ai)"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [
+    { name = "duckmind contributors" },
+]
+keywords = [
+    "duckduckgo", "duck.ai", "duckchat", "ai", "chat",
+    "gpt", "claude", "llama", "mistral", "llm",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "httpx>=0.27",
+    "mini-racer>=0.12",
+    "cryptography>=41",
+    "html5lib>=1.1",
+]
+
+[project.scripts]
+duckmind = "duckmind.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/nicolo/duckmind"
+Repository = "https://github.com/nicolo/duckmind"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/duckmind"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/duckmind/_stubs.js" = "duckmind/_stubs.js"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/duckmind",
+    "README.md",
+    "pyproject.toml",
+]
