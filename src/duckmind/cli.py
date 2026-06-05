@@ -137,7 +137,7 @@ def _repl() -> None:
     client: Optional[DuckMind] = None
     model = "gpt-5-mini"
     effort: Optional[str] = None
-    history_enabled = False
+    history_enabled = True
     web_search = False
 
     def ensure_client() -> DuckMind:
@@ -204,7 +204,13 @@ def _repl() -> None:
             elif cmd == "/history":
                 history_enabled = not history_enabled
                 print(f"History: {'on' if history_enabled else 'off'}")
-                close_client()
+                if client is not None:
+                    if history_enabled:
+                        client.enable_history()
+                    else:
+                        client.disable_history()
+                else:
+                    close_client()
 
             elif cmd == "/web":
                 web_search = not web_search

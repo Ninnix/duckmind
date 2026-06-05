@@ -15,6 +15,7 @@ function __makeHtmlElement(tag, overrides) {
     appendChild: function(c){ return c; },
     removeChild: function(c){ return c; },
     addEventListener: function(){}, removeEventListener: function(){},
+    getBoundingClientRect: function(){ return {x:0,y:0,width:0,height:0,top:0,right:0,bottom:0,left:0}; },
     querySelector: function(){ return null; },
     querySelectorAll: function(s){
       if (s === '*') {
@@ -174,6 +175,7 @@ window = __mkObj('window', {
 });
 window.top = window; window.self = window; window.window = window; window.parent = window; window.globalThis = window;
 var top = window, self = window, parent = window;
+var getComputedStyle = window.getComputedStyle;
 var navigator = window.navigator;
 var location = window.location;
 var screen = window.screen;
