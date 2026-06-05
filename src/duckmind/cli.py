@@ -4,9 +4,11 @@ duckmind CLI — ds4-style chat client for DuckDuckGo AI Chat (duck.ai).
 
 from __future__ import annotations
 
+import queue
 import signal
 import sys
 import textwrap
+import threading
 from typing import Optional
 
 from . import DuckMind, ImagePart, list_models
@@ -266,11 +268,55 @@ def _repl() -> None:
     signal.signal(signal.SIGINT, old_handler)
 
 
+GREY = "\033[90m"
+RESET = "\033[0m"
+CLR = "\033[2K\r"
+
+
 def _chat(client: DuckMind, text, web_search: bool, effort: Optional[str] = None) -> None:
     try:
-        for chunk in client.stream(text, web_search=web_search, effort=effort):
-            print(chunk, end="", flush=True)
-        print()
+        if effort != "reasoning":
+            for chunk in client.stream(text, web_search=web_search, effort=effort):
+                print(chunk, end="", flush=True)
+            print()
+            return
+
+        q: queue.SimpleQueue = queue.SimpleQueue()
+        def _run():
+            try:
+                for ch in client.stream(text, web_search=web_search, effort=effort):
+                    q.put(("c", ch))
+                q.put(("d", None))
+            except BaseException as e:
+                q.put(("e", e))
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+
+        dots = 0
+        item = None
+        while item is None:
+            sys.stdout.write(f"{CLR}{GREY}thinking{'.' * ((dots % 3) + 1)}{RESET}")
+            sys.stdout.flush()
+            dots += 1
+            try:
+                item = q.get(timeout=0.4)
+            except queue.Empty:
+                pass
+
+        sys.stdout.write(CLR)
+        sys.stdout.flush()
+
+        while True:
+            kind, val = item
+            if kind == "c":
+                sys.stdout.write(val)
+                sys.stdout.flush()
+            elif kind == "d":
+                print()
+                return
+            elif kind == "e":
+                raise val
+            item = q.get()
     except KeyboardInterrupt:
         print("\nInterrupted.")
     except Exception as e:
