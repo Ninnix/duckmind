@@ -15,12 +15,17 @@ from . import DuckMind, ImagePart, list_models
 from .models import resolve_model
 
 MODEL_NAMES = {
-    "gpt4o-mini": "gpt-4o-mini",
-    "gpt5-mini": "gpt-5-mini",
+    "luna": "gpt-6-luna",
+    "mini": "gpt-5.4-mini",
     "claude": "claude-haiku-4-5",
-    "llama": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
     "mistral": "mistral-small-2603",
     "gpt-oss": "tinfoil/gpt-oss-120b",
+    "gemma": "tinfoil/gemma4-31b",
+    "terra": "gpt-5.6-terra",
+    "sonnet4.6": "claude-sonnet-4-6",
+    "sonnet5.5": "claude-sonnet-5-5",
+    "sol": "gpt-5.6-sol",
+    "opus": "claude-opus-4-8",
 }
 
 
@@ -41,7 +46,7 @@ def _usage(fp) -> None:
         f"\n"
         f"Options:\n"
         f"  --model NAME\n"
-        f"      Model to use: gpt4o-mini (default), gpt5-mini, claude, llama, mistral, gpt-oss.\n"
+        f"      Model alias or full identifier (default: luna / gpt-6-luna).\n"
         f"  --image PATH\n"
         f"      Attach an image and prompt \"Describe this image\".\n"
         f"  --models\n"
@@ -70,8 +75,11 @@ def _print_help() -> None:
 
 def _list_models() -> None:
     print("Available models:")
+    free = list_models("free")
+    plus = list_models("plus")
     for alias, full in MODEL_NAMES.items():
-        print(f"  {alias:20s} {full}")
+        tier = "free" if full in free else "Plus subscription" if full in plus else "Pro subscription"
+        print(f"  {alias:20s} {full:30s} {tier}")
 
 
 def _print_header() -> None:
@@ -137,7 +145,7 @@ def _repl() -> None:
         pass
 
     client: Optional[DuckMind] = None
-    model = "gpt-5-mini"
+    model = "gpt-6-luna"
     effort: Optional[str] = None
     history_enabled = True
     web_search = False

@@ -1,52 +1,52 @@
-"""
-Generate RSA-OAEP public keys for durable streams.
-
-DuckDuckGo's chat endpoint uses durable streams — persistent SSE connections
-that survive brief network hiccups. The initial POST must carry a JWK public
-key so the server can encrypt the stream-resumption token.
-
-We generate a fresh 2048-bit RSA key pair per client instance. Only the
-public half is sent; the private half is kept in memory and never persisted.
-"""
-
-from __future__ import annotations
+"""Generate ephemeral public parameters for Duck.ai's stream-resumption token."""
 
 import base64
+import math
+import secrets
 import uuid
-from typing import Any, Dict, Optional
-
-from .exceptions import DuckMindError
 
 
-def _b64u_int(i: int) -> str:
-    length = (i.bit_length() + 7) // 8 or 1
-    return base64.urlsafe_b64encode(i.to_bytes(length, "big")).rstrip(b"=").decode()
+def _b64u_int(value):
+    raw = value.to_bytes((value.bit_length() + 7) // 8 or 1, 'big')
+    return base64.urlsafe_b64encode(raw).rstrip(b'=').decode()
 
 
-def generate_jwk() -> Dict[str, Any]:
-    try:
-        from cryptography.hazmat.primitives.asymmetric import rsa
-    except ImportError as e:
-        raise DuckMindError(
-            "duck.ai requires a real RSA-OAEP public key for durable streams. "
-            "Install: pip install cryptography"
-        ) from e
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    nums = key.public_key().public_numbers()
-    return {
-        "alg": "RSA-OAEP-256",
-        "e": _b64u_int(nums.e),
-        "ext": True,
-        "key_ops": ["encrypt"],
-        "kty": "RSA",
-        "n": _b64u_int(nums.n),
-        "use": "enc",
-    }
+def _prime(bits):
+    while True:
+        n = secrets.randbits(bits) | (1 << (bits - 1)) | 1
+        if any(n % p == 0 for p in (3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47)):
+            continue
+        if math.gcd(n - 1, 65537) != 1:
+            continue
+        d, shifts = n - 1, 0
+        while not d & 1:
+            d >>= 1
+            shifts += 1
+        for _ in range(40):
+            x = pow(secrets.randbelow(n - 3) + 2, d, n)
+            if x in (1, n - 1):
+                continue
+            for _ in range(shifts - 1):
+                x = x * x % n
+                if x == n - 1:
+                    break
+            else:
+                break
+        else:
+            return n
 
 
-def make_durable_stream(jwk: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    return {
-        "messageId": str(uuid.uuid4()),
-        "conversationId": str(uuid.uuid4()),
-        "publicKey": jwk or generate_jwk(),
-    }
+def generate_jwk():
+    # This client uses only the public key; no private key is stored or used to decrypt.
+    while True:
+        p, q = _prime(1024), _prime(1024)
+        n = p * q
+        if p != q and n.bit_length() == 2048:
+            break
+    return {'alg': 'RSA-OAEP-256', 'e': _b64u_int(65537), 'ext': True,
+            'key_ops': ['encrypt'], 'kty': 'RSA', 'n': _b64u_int(n), 'use': 'enc'}
+
+
+def make_durable_stream(jwk=None):
+    return {'messageId': str(uuid.uuid4()), 'conversationId': str(uuid.uuid4()),
+            'publicKey': jwk or generate_jwk()}

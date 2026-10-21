@@ -23,18 +23,20 @@ from __future__ import annotations
 import json
 import logging
 import random
+import re
 import threading
 import time
 import uuid
+from http.client import HTTPException
+from urllib.error import URLError
 from typing import Any, Dict, Iterator, List, Optional, Union
 
-import httpx
-
+from ._http import Response, Session
 from ._challenge import make_fe_signals, solve_challenge
 from ._durable import generate_jwk
 from .exceptions import APIError, ChallengeError, ConversationLimitError, DuckMindError, RatelimitError
 from .models import (
-    GPT4oMini,
+    GPT6Luna,
     History,
     ImagePart,
     Message,
@@ -54,7 +56,7 @@ _UA = (
     "AppleWebKit/605.1.15 (KHTML, like Gecko) "
     "Version/17.6 Safari/605.1.15"
 )
-_FE_VERSION = "serp_20260424_180649_ET-0bdc33b2a02ebf8f235def65d887787f694720a1"
+_FE_VERSION = "serp_20261021_050521_ET-15b3c7c83d3199da0e30d34a2256d07cf59ef054"
 
 _TOOL_CHOICE_OFF = {
     "NewsSearch": False,
@@ -71,7 +73,7 @@ class DuckMind:
     """Client for DuckDuckGo AI Chat API.
 
     Args:
-        model: Model alias or full model id (default: gpt-4o-mini).
+        model: Model alias or full model id (default: gpt-6-luna).
         effort: Reasoning effort — None (model default), "fast", or "reasoning".
         fe_version: x-fe-version header override. The library ships with a
             known-good default; override only if duck.ai's version rotates.
@@ -81,12 +83,12 @@ class DuckMind:
             duck.ai rate-limits to ~1 req/15s, so backoff must be generous.
         history: Enable multi-turn memory (default: False). When False every
             call is a fresh single-turn request.
-        proxy: Optional proxy URL (http/socks5).
+        proxy: Optional HTTP or HTTPS proxy URL.
     """
 
     def __init__(
         self,
-        model: str = GPT4oMini,
+        model: str = GPT6Luna,
         *,
         effort: Optional[str] = None,
         fe_version: Optional[str] = None,
@@ -99,6 +101,7 @@ class DuckMind:
         self.model = resolve_model(model)
         self.effort = effort
         self.fe_version = fe_version or _FE_VERSION
+        self._discover_fe_version = fe_version is None
         self.timeout = timeout
         self.max_retries = max(1, int(max_retries))
         self.backoff_base = max(0.0, float(backoff_base))
@@ -108,13 +111,9 @@ class DuckMind:
         self._jwk: Optional[Dict[str, Any]] = None
         self._jwk_lock = threading.Lock()
         self._pending_hash: Optional[str] = None
+        self._last_request: Optional[float] = None
 
-        self._client = httpx.Client(
-            http2=False,
-            timeout=httpx.Timeout(timeout, connect=15.0, read=timeout),
-            headers=self._default_headers(),
-            follow_redirects=True,
-        )
+        self._client = Session(timeout=timeout, headers=self._default_headers(), proxy=proxy)
 
         # Warm the session: visit the homepage and seed cookies.
         try:
@@ -126,7 +125,7 @@ class DuckMind:
         return {
             "User-Agent": _UA,
             "Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
+            "Accept-Encoding": "gzip, deflate",
             "Referer": f"{_BASE}/",
             "Origin": _BASE,
             "Sec-Fetch-Dest": "empty",
@@ -172,7 +171,12 @@ class DuckMind:
             "Sec-Fetch-User": "?1",
             "Upgrade-Insecure-Requests": "1",
         }
-        self._client.get(f"{_BASE}/", headers=html_headers, timeout=10.0)
+        page = self._client.get(f"{_BASE}/", headers=html_headers, timeout=10.0)
+        if self._discover_fe_version and page.status_code == 200:
+            tag = re.search(r'data-version-tag=["\']([^"\']+)', page.text)
+            sha = re.search(r'data-version-sha=["\']([^"\']+)', page.text)
+            if tag and sha:
+                self.fe_version = f"{tag[1]}-{sha[1]}"
         for k, v in (
             ("5", "1"),
             ("ah", "wt-wt"),
@@ -199,37 +203,19 @@ class DuckMind:
         if pending:
             self._pending_hash = None
             return solve_challenge(pending, _UA)
-        # No cached hash: hit /status. duck.ai rate-limits this endpoint too,
-        # so retry with backoff on 429.
-        for attempt in range(3):
-            r = self._client.get(
-                f"{_BASE}/duckchat/v1/status",
-                headers={
-                    "Accept": "*/*",
-                    "x-vqd-accept": "1",
-                    "Cache-Control": "no-store",
-                    "Pragma": "no-cache",
-                    "Referer": f"{_BASE}/",
-                    "Origin": _BASE,
-                },
-                timeout=self.timeout,
-            )
-            if r.status_code == 200:
-                challenge = r.headers.get("x-vqd-hash-1")
-                if not challenge:
-                    raise DuckMindError("server did not return x-vqd-hash-1")
-                return solve_challenge(challenge, _UA)
-            if r.status_code == 429 and attempt < 2:
-                delay = 5.0 * (2**attempt) + random.uniform(0, 1.0)
-                time.sleep(delay)
-                continue
-            if r.status_code == 429:
-                raise RatelimitError(r.text)
-            raise APIError(
-                f"status endpoint: {r.status_code}", r.status_code, r.text
-            )
-        # unreachable
-        raise DuckMindError("_fetch_challenge_header failed")
+        # A unique URL prevents intermediary caches from replaying an already-spent challenge.
+        r = self._client.get(
+            f"{_BASE}/duckchat/v1/status?request={uuid.uuid4().hex}",
+            headers={"Accept": "*/*", "x-vqd-accept": "1", "Cache-Control": "no-store",
+                     "Pragma": "no-cache", "Referer": f"{_BASE}/", "Origin": _BASE},
+            timeout=self.timeout,
+        )
+        if r.status_code == 200:
+            challenge = r.headers.get("x-vqd-hash-1")
+            if not challenge:
+                raise APIError("server did not return x-vqd-hash-1")
+            return solve_challenge(challenge, _UA)
+        self._raise_for_status(r)
 
     def _get_jwk(self) -> Dict[str, Any]:
         if self._jwk is None:
@@ -288,7 +274,12 @@ class DuckMind:
     # ----------------------------------------------------- HTTP + SSE
 
     def _chat_stream(self, payload: Dict[str, Any]):
+        if self._last_request is not None:
+            wait = 15.0 - (time.monotonic() - self._last_request)
+            if wait > 0:
+                time.sleep(wait)
         hash_header = self._fetch_challenge_header()
+        self._last_request = time.monotonic()
         path = self._endpoint_for(payload.get("model", self.model))
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         return self._client.stream(
@@ -307,7 +298,7 @@ class DuckMind:
         )
 
     @staticmethod
-    def _raise_for_status(resp: httpx.Response) -> None:
+    def _raise_for_status(resp: Response) -> None:
         try:
             resp.read()
             body = resp.text
@@ -318,21 +309,26 @@ class DuckMind:
         if resp.status_code == 429:
             if "ERR_CONVERSATION_LIMIT" in body:
                 raise ConversationLimitError(body)
-            raise RatelimitError(body)
+            raise RatelimitError(body, retry_after=resp.headers.get("Retry-After"))
+        if resp.status_code == 404 and "ERR_MODEL_UNAVAILABLE" in body:
+            raise APIError("Model unavailable; choose a current identifier from list_models()", 404, body)
         raise APIError(
             f"chat failed: HTTP {resp.status_code}", resp.status_code, body
         )
 
     @staticmethod
-    def _iter_sse(resp: httpx.Response) -> Iterator[str]:
-        for raw in resp.iter_lines():
-            if not raw:
-                continue
-            if not raw.startswith("data:"):
-                continue
-            data = raw[5:].lstrip()
-            if data:
-                yield data
+    def _iter_sse(resp: Response) -> Iterator[str]:
+        data = []
+        for line in resp.iter_lines():
+            if not line:
+                if data:
+                    yield "\n".join(data)
+                    data = []
+            elif line.startswith("data:"):
+                value = line[5:]
+                data.append(value[1:] if value.startswith(" ") else value)
+        if data:
+            yield "\n".join(data)
 
     # ---------------------------------------------------------- retry core
 
@@ -345,9 +341,11 @@ class DuckMind:
             new_hash = resp.headers.get("x-vqd-hash-1")
             if new_hash:
                 self._pending_hash = new_hash
-            saw_any = False
+            saw_message = False
             for data in self._iter_sse(resp):
                 if data == "[DONE]":
+                    if not saw_message:
+                        raise APIError("empty stream")
                     return
                 if (
                     data.startswith("[CHAT_TITLE")
@@ -368,10 +366,10 @@ class DuckMind:
                     if msg in ("ERR_CHALLENGE", "ERR_INVALID_CHALLENGE"):
                         raise ChallengeError(str(msg))
                     raise APIError(str(msg), obj.get("status"), data)
-                saw_any = True
+                if isinstance(obj.get("message"), str) and obj["message"]:
+                    saw_message = True
                 yield obj
-            if not saw_any:
-                raise APIError("empty stream", 200, "")
+            raise APIError("stream ended before completion")
 
     def _stream_with_retry(
         self, payload: Dict[str, Any]
@@ -381,10 +379,10 @@ class DuckMind:
             yielded = False
             try:
                 for item in self._attempt_stream(payload):
-                    yielded = True
+                    yielded = yielded or bool(item.get("message"))
                     yield item
                 return
-            except (ChallengeError, httpx.RemoteProtocolError, httpx.ReadError) as e:
+            except (ChallengeError, OSError, HTTPException, URLError) as e:
                 self._pending_hash = None
                 if yielded:
                     raise
@@ -397,17 +395,18 @@ class DuckMind:
                 else:
                     raise
             except RatelimitError as e:
+                self._pending_hash = None
                 if isinstance(e, ConversationLimitError):
                     raise
                 if yielded:
                     raise
                 last_exc = e
-            except httpx.TimeoutException as e:
-                if yielded:
-                    raise
-                last_exc = e
             if attempt < self.max_retries - 1:
                 delay = self.backoff_base * (2**attempt) + random.uniform(0, 0.25)
+                if isinstance(last_exc, RatelimitError):
+                    delay = max(delay, last_exc.retry_after if last_exc.retry_after is not None else 15.0)
+                    if delay > 60:
+                        raise last_exc
                 time.sleep(delay)
         if last_exc is not None:
             raise last_exc
@@ -439,7 +438,7 @@ class DuckMind:
             use_model = (
                 self.model
                 if model_supports_vision(self.model)
-                else "gpt-5-mini"
+                else GPT6Luna
             )
         else:
             use_model = self.model

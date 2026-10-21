@@ -5,83 +5,155 @@ import mimetypes
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Union
 
-# Models known to work. Any string can be passed directly; these are
-# just the ones we know about at release time.
-GPT4oMini = "gpt-4o-mini"
-GPT5Mini = "gpt-5-mini"
+# Duck.ai catalog checked 2026-10-21. Unknown identifiers may still be passed through.
+GPT6Luna = "gpt-6-luna"
+GPT54Mini = "gpt-5.4-mini"
 ClaudeHaiku = "claude-haiku-4-5"
-Llama4Scout = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
 MistralSmall = "mistral-small-2603"
 GptOss120b = "tinfoil/gpt-oss-120b"
+Gemma4 = "tinfoil/gemma4-31b"
+GPT56Terra = "gpt-5.6-terra"
+ClaudeSonnet46 = "claude-sonnet-4-6"
+ClaudeSonnet55 = "claude-sonnet-5-5"
+GPT56Sol = "gpt-5.6-sol"
+ClaudeOpus48 = "claude-opus-4-8"
+
+# Keep historical identifiers importable without presenting retired models as available.
+GPT4oMini = "gpt-4o-mini"
+GPT5Mini = "gpt-5-mini"
+Llama4Scout = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
 ImageGeneration = "image-generation"
 
-# Convenience aliases.
 gpt4o_mini = GPT4oMini
 gpt5_mini = GPT5Mini
-claude_haiku = ClaudeHaiku
 llama4_scout = Llama4Scout
+image_gen = ImageGeneration
+gpt6_luna = GPT6Luna
+gpt54_mini = GPT54Mini
+claude_haiku = ClaudeHaiku
 mistral_small = MistralSmall
 gpt_oss_120b = GptOss120b
-image_gen = ImageGeneration
+gemma4 = Gemma4
+gpt56_terra = GPT56Terra
+claude_sonnet46 = ClaudeSonnet46
+claude_sonnet55 = ClaudeSonnet55
+gpt56_sol = GPT56Sol
+claude_opus48 = ClaudeOpus48
 
 MODEL_ALIASES: Dict[str, str] = {
+    "luna": GPT6Luna,
+    "gpt-luna": GPT6Luna,
+    "gtp-luna": GPT6Luna,
+    "gpt6": GPT6Luna,
+    "gpt-6": GPT6Luna,
+    "gpt6_luna": GPT6Luna,
+    "gpt54-mini": GPT54Mini,
+    "gpt5.4-mini": GPT54Mini,
+    "mini": GPT54Mini,
+    "terra": GPT56Terra,
+    "gpt56-terra": GPT56Terra,
+    "sol": GPT56Sol,
+    "gpt56-sol": GPT56Sol,
+    "claude": ClaudeHaiku,
+    "haiku": ClaudeHaiku,
+    "claude-haiku": ClaudeHaiku,
+    "claude_haiku": ClaudeHaiku,
+    "sonnet": ClaudeSonnet55,
+    "sonnet4.6": ClaudeSonnet46,
+    "sonnet5.5": ClaudeSonnet55,
+    "opus": ClaudeOpus48,
+    "opus4.8": ClaudeOpus48,
+    "gemma": Gemma4,
+    "gemma4": Gemma4,
+    "mistral": MistralSmall,
+    "mistral-small": MistralSmall,
+    "mistral_small": MistralSmall,
+    "gpt-oss": GptOss120b,
+    "gpt_oss": GptOss120b,
+    "gpt-oss-120b": GptOss120b,
+    "gpt_oss_120b": GptOss120b,
     "gpt4": GPT4oMini,
     "gpt-4": GPT4oMini,
     "gpt4o": GPT4oMini,
     "gpt-4o": GPT4oMini,
-    "gpt-4o-mini": GPT4oMini,
     "gpt4o_mini": GPT4oMini,
     "gpt5": GPT5Mini,
     "gpt-5": GPT5Mini,
-    "gpt-5-mini": GPT5Mini,
     "gpt5_mini": GPT5Mini,
-    "claude": ClaudeHaiku,
-    "claude-haiku": ClaudeHaiku,
-    "claude_haiku": ClaudeHaiku,
-    "claude-haiku-4-5": ClaudeHaiku,
-    "haiku": ClaudeHaiku,
     "llama": Llama4Scout,
     "llama4": Llama4Scout,
     "llama-4": Llama4Scout,
     "llama4-scout": Llama4Scout,
     "llama4_scout": Llama4Scout,
-    "mistral": MistralSmall,
-    "mistral-small": MistralSmall,
-    "mistral_small": MistralSmall,
-    "mistral-small-2603": MistralSmall,
-    "gpt-oss": GptOss120b,
-    "gpt_oss": GptOss120b,
-    "gpt-oss-120b": GptOss120b,
-    "gpt_oss_120b": GptOss120b,
-    "image-generation": ImageGeneration,
-    "image_generation": ImageGeneration,
     "image": ImageGeneration,
     "img": ImageGeneration,
+    "image_generation": ImageGeneration,
 }
 
 _MODEL_CAPS: Dict[str, Dict[str, object]] = {
-    GPT4oMini: {"reasoning": False, "vision": True, "web_search": True},
-    GPT5Mini: {
-        "reasoning": True, "vision": True, "web_search": True,
-        "fast": "minimal", "default": "minimal", "thinking": "low",
+    GPT6Luna: {
+        "vision": True, "web_search": True,
+        "tiers": ('internal', 'free', 'plus', 'pro'),
+        "reasoning": True, "fast": 'none', "default": 'none', "thinking": 'low',
+    },
+    GPT54Mini: {
+        "vision": True, "web_search": True,
+        "tiers": ('free', 'plus', 'pro', 'internal'),
+        "reasoning": True, "fast": 'none', "default": 'none', "thinking": 'medium',
     },
     ClaudeHaiku: {
-        "reasoning": True, "vision": True, "web_search": True,
-        "fast": "none", "default": "low", "thinking": "low",
+        "vision": True, "web_search": True,
+        "tiers": ('free', 'plus', 'pro', 'internal'),
+        "reasoning": True, "fast": 'none', "default": 'none', "thinking": 'low',
     },
-    Llama4Scout: {"reasoning": False, "vision": False, "web_search": False},
-    MistralSmall: {"reasoning": False, "vision": False, "web_search": False},
+    MistralSmall: {
+        "vision": False, "web_search": False,
+        "tiers": ('free', 'plus', 'pro', 'internal'),
+    },
     GptOss120b: {
-        "reasoning": True, "vision": False, "web_search": False,
-        "fast": "low", "default": "low", "thinking": "low",
+        "vision": False, "web_search": True,
+        "tiers": ('free', 'plus', 'pro', 'internal'),
+        "reasoning": True, "fast": 'low', "default": 'low', "thinking": 'low',
     },
-    ImageGeneration: {"reasoning": False, "vision": True, "web_search": False},
+    Gemma4: {
+        "vision": True, "web_search": True,
+        "tiers": ('internal', 'free', 'plus', 'pro'),
+        "reasoning": True, "fast": 'none', "default": 'none', "thinking": 'low',
+    },
+    GPT56Terra: {
+        "vision": True, "web_search": True,
+        "tiers": ('plus', 'pro', 'internal'),
+        "reasoning": True, "fast": 'none', "default": 'none', "thinking": 'medium',
+    },
+    ClaudeSonnet46: {
+        "vision": True, "web_search": True,
+        "tiers": ('plus', 'pro', 'internal'),
+        "reasoning": True, "fast": 'none', "default": 'none', "thinking": 'low',
+    },
+    ClaudeSonnet55: {
+        "vision": True, "web_search": True,
+        "tiers": ('plus', 'pro', 'internal'),
+        "reasoning": True, "fast": 'none', "default": 'none', "thinking": 'low',
+    },
+    GPT56Sol: {
+        "vision": True, "web_search": True,
+        "tiers": ('pro', 'internal'),
+        "reasoning": True, "fast": 'none', "default": 'none', "thinking": 'medium',
+    },
+    ClaudeOpus48: {
+        "vision": True, "web_search": True,
+        "tiers": ('pro', 'internal'),
+        "reasoning": True, "fast": 'none', "default": 'none', "thinking": 'medium',
+    },
 }
+
+
+MODEL_ALIASES.update({model.lower(): model for model in _MODEL_CAPS})
 
 
 def resolve_model(name: Optional[str]) -> str:
     if not name:
-        return GPT4oMini
+        return GPT6Luna
     return MODEL_ALIASES.get(name.strip().lower(), name.strip())
 
 
@@ -107,8 +179,13 @@ def model_supports_vision(model: str) -> bool:
     return bool(_MODEL_CAPS.get(resolve_model(model), {}).get("vision"))
 
 
-def list_models() -> List[str]:
-    return list(_MODEL_CAPS.keys())
+def list_models(access_tier: Optional[str] = None) -> List[str]:
+    if access_tier is None:
+        return list(_MODEL_CAPS)
+    tier = access_tier.lower()
+    if tier not in ("free", "plus", "pro", "internal"):
+        raise ValueError("access_tier must be free, plus, pro or internal")
+    return [name for name, caps in _MODEL_CAPS.items() if tier in caps["tiers"]]
 
 
 class Role:
