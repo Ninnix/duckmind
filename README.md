@@ -1,5 +1,9 @@
 # duckmind
 
+<p align="center">
+  <img src="logo.png" alt="DuckMind logo" width="220">
+</p>
+
 Unofficial Python client for DuckDuckGo AI Chat (duck.ai). No API key needed for free models.
 
 ```sh
