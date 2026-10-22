@@ -36,6 +36,8 @@ print(list_models())                       # current public catalog
 print(list_models("free"))                # no subscription required
 ```
 
+`ask_with_image(prompt, image)` accepts a local path, image bytes, data URL, or HTTPS image URL. Remote images are downloaded with the standard library, limited to 20 MB, and sent as image data.
+
 `luna`, `gpt-luna`, `gpt-6-luna` and `gtp-luna` select GPT Luna. Both the API and CLI use it by default. `effort="fast"` uses the model's lowest supported reasoning setting; `effort="reasoning"` uses its highest supported setting. GPT Luna supports `none` and `low`.
 
 ## Models

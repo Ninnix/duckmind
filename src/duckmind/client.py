@@ -509,5 +509,7 @@ class DuckMind:
         if isinstance(image, str):
             if image.startswith("data:"):
                 return ImagePart(image=image, mime_type=mime_type)
+            if image.startswith(("https://", "http://")):
+                return ImagePart.from_url(image)
             return ImagePart.from_path(image)
         raise TypeError(f"unsupported image type: {type(image).__name__}")

@@ -4,6 +4,8 @@ import base64
 import mimetypes
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Union
+from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
 
 # Duck.ai catalog checked 2026-10-21. Unknown identifiers may still be passed through.
 GPT6Luna = "gpt-6-luna"
@@ -209,6 +211,23 @@ class ImagePart:
         mt = mime_type or mimetypes.guess_type(path)[0] or "image/png"
         with open(path, "rb") as f:
             return cls.from_bytes(f.read(), mime_type=mt)
+
+    @classmethod
+    def from_url(cls, url: str, timeout: float = 30) -> "ImagePart":
+        parsed = urlsplit(url)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("Image URL must use HTTPS")
+        request = Request(url, headers={"User-Agent": "DuckMind/1.0"})
+        with urlopen(request, timeout=timeout) as response:
+            if urlsplit(response.geturl()).scheme != "https":
+                raise ValueError("Image URL redirect must use HTTPS")
+            mime_type = response.headers.get_content_type()
+            if not mime_type.startswith("image/"):
+                raise ValueError("URL did not return an image")
+            data = response.read(20 * 1024 * 1024 + 1)
+        if len(data) > 20 * 1024 * 1024:
+            raise ValueError("Image exceeds 20 MB")
+        return cls.from_bytes(data, mime_type=mime_type)
 
     def to_part(self) -> dict:
         return {"type": "image", "mimeType": self.mime_type, "image": self.image}

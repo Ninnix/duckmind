@@ -105,6 +105,40 @@ def test_image_part():
     assert part["mimeType"] == "image/png"
 
 
+def test_image_part_from_https_url(monkeypatch):
+    class Headers:
+        def get_content_type(self):
+            return "image/jpeg"
+
+    class Response:
+        headers = Headers()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def geturl(self):
+            return "https://commons.wikimedia.org/photo.jpg"
+
+        def read(self, size):
+            return b"photo"
+
+    monkeypatch.setattr("duckmind.models.urlopen", lambda request, timeout: Response())
+    part = ImagePart.from_url("https://commons.wikimedia.org/photo.jpg")
+    assert part.mime_type == "image/jpeg"
+    assert part.image.endswith("cGhvdG8=")
+    assert DuckMind._coerce_image("https://commons.wikimedia.org/photo.jpg", "image/png").image == part.image
+
+
+def test_image_part_from_url_rejects_non_https():
+    import pytest
+
+    with pytest.raises(ValueError, match="HTTPS"):
+        ImagePart.from_url("http://example.com/photo.jpg")
+
+
 def test_exception_hierarchy():
     assert issubclass(ChallengeError, DuckMindError)
     assert issubclass(RatelimitError, DuckMindError)
