@@ -4,7 +4,7 @@
   <img src="logo.png" alt="DuckMind logo" width="220">
 </p>
 
-Unofficial Python client for DuckDuckGo AI Chat (duck.ai). No API key needed for free models.
+Talk to DuckDuckGo AI Chat at duck.ai from Python or the shell. No API key is needed for free models.
 
 ```sh
 pip install git+https://github.com/Ninnix/duckmind.git
@@ -12,14 +12,28 @@ pip install git+https://github.com/Ninnix/duckmind.git
 
 ## CLI
 
+The prompt has an orange `🪿` banner, coloured input, streamed answers, and a model picker. Set `NO_COLOR=1` or pass `--no-color` to disable colour.
+
 ```sh
 duckmind                     # interactive REPL, GPT Luna by default
 duckmind -p "hello"          # one-shot
-duckmind --model gemma -p "hello"
-duckmind --models            # current identifiers and subscription tiers
+duckmind ask "hello"         # same as -p
+duckmind -m gemma -p "hello" # model alias or full identifier
+duckmind --models            # free models
+duckmind --models-all        # every model, including premium tiers
+duckmind --image photo.jpg   # one-shot image prompt
 ```
 
-Commands: `/model`, `/effort fast|reasoning`, `/history`, `/web`, `/image`, `/read`, `/clear`, `/quit`.
+Commands:
+
+- `/models` opens the free-model picker; `/models-all` includes premium models.
+- `/model [N|alias|id]` opens the free picker, or switches directly.
+- `/status` shows model, effort, web and history state.
+- `/effort fast|reasoning` sets effort; **Tab** cycles it at the prompt.
+- `/web [on|off]` toggles web search; **Ctrl+W** does the same.
+- `/history [on|off]`, `/image PATH [text]`, `/read FILE`, `/clear`, `/help`, `/quit`.
+
+Choose a model with `/models`, arrow keys, and Enter. `/models N` selects by number without opening the picker. The same picker is used by `bleo` and `gng`.
 
 ## API
 
@@ -40,13 +54,13 @@ print(list_models())                       # current public catalog
 print(list_models("free"))                # no subscription required
 ```
 
-`ask_with_image(prompt, image)` accepts a local path, image bytes, data URL, or HTTPS image URL. Remote images are downloaded with the standard library, limited to 20 MB, and sent as image data.
+`ask_with_image(prompt, image)` accepts a path, bytes, data URL, or HTTPS URL. Remote images are downloaded with the standard library, limited to 20 MB, then sent as image data.
 
 `luna`, `gpt-luna`, `gpt-6-luna` and `gtp-luna` select GPT Luna. Both the API and CLI use it by default. `effort="fast"` uses the model's lowest supported reasoning setting; `effort="reasoning"` uses its highest supported setting. GPT Luna supports `none` and `low`.
 
 ## Models
 
-Catalog checked against [Duck.ai's frontend](https://duck.ai/) on 2026-10-21. Free models are also available on Plus and Pro; Plus models are also available on Pro. Paid models require a Duck.ai subscription session.
+The catalog was checked against [Duck.ai](https://duck.ai/) on 2026-10-21. Free models are also available on Plus and Pro. Plus models are also available on Pro. Paid models need a Duck.ai subscription session.
 
 | Identifier | Alias | Access |
 | --- | --- | --- |
@@ -62,13 +76,13 @@ Catalog checked against [Duck.ai's frontend](https://duck.ai/) on 2026-10-21. Fr
 | `gpt-5.6-sol` | `sol` | Pro |
 | `claude-opus-4-8` | `opus` | Pro |
 
-GPT-4o mini, GPT-5 mini and Llama Scout have been retired from Duck.ai and are excluded from `list_models()`. Their Python constants remain importable. Explicit requests for a retired model return an actionable API error; they are not silently switched to another model. Unknown identifiers can still be passed directly.
+Duck.ai has retired GPT-4o mini, GPT-5 mini, and Llama Scout. `list_models()` excludes them, but their Python constants remain importable. Requests for retired models return an API error; they are never silently switched. You can still pass an unknown identifier directly.
 
 ## Transport and tests
 
-The client discovers the current frontend version from Duck.ai's homepage during session warm-up. An explicit `fe_version=` override takes precedence. Its challenge environment uses the `duck.ai` origin. HTTP, cookies, proxies, gzip/deflate streaming and public JWK generation use Python’s standard library. The two runtime dependencies are `mini-racer` for the service’s JavaScript challenges and `html5lib` for browser-compatible HTML normalization. `httpx` and `cryptography` are removed.
+At session start, the client reads the frontend version from Duck.ai's homepage. Set `fe_version=` to override it. Challenges use the `duck.ai` origin. The standard library handles HTTP, cookies, proxies, compressed streams, and public JWK generation. Runtime dependencies are `mini-racer` for JavaScript challenges and `html5lib` for HTML normalization.
 
-A rejected challenge is discarded before retrying. Fresh status URLs prevent cached challenge reuse, consecutive chat requests share the session and wait at least 15 seconds, and HTTP 429 responses honor `Retry-After`. Retries stop after the configured number of attempts; cooldowns above 60 seconds are returned to the caller. Once visible text has streamed, a failure is raised without replaying it. A stream missing its completion marker is rejected.
+Rejected challenges are discarded before retrying. Fresh status URLs prevent cached challenge reuse. Consecutive chat requests share a session and wait at least 15 seconds. HTTP 429 responses honor `Retry-After`; waits above 60 seconds return to the caller. Retries stop at the configured attempt count. If a stream fails after text appears, the error is raised without replaying the text. A stream without its completion marker is rejected.
 
 ```sh
 pip install -e .
@@ -76,7 +90,7 @@ pip install pytest
 pytest tests/ -v
 ```
 
-Tests run offline and cover model aliases and tiers, defaults, frontend version discovery, streaming, challenge origin and retired-model errors. A live one-shot check is `duckmind -p "Reply with only OK"`; it uses the public service and its rate limits.
+Tests run offline. They cover aliases, model tiers, defaults, frontend version discovery, streaming, challenge origin, and retired-model errors. For a live check, run `duckmind -p "Reply with only OK"`; this uses Duck.ai and its rate limits.
 
 ## Thanks
 

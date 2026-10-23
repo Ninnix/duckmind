@@ -132,6 +132,15 @@ def test_image_part_from_https_url(monkeypatch):
     assert DuckMind._coerce_image("https://commons.wikimedia.org/photo.jpg", "image/png").image == part.image
 
 
+def test_image_part_from_data_url_keeps_its_mime_type():
+    import base64
+
+    image = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xffphoto").decode()
+    part = ImagePart.from_url(image)
+    assert part.mime_type == "image/jpeg"
+    assert DuckMind._coerce_image(image, "image/png").mime_type == "image/jpeg"
+
+
 def test_image_part_from_url_rejects_non_https():
     import pytest
 

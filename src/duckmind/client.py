@@ -508,7 +508,7 @@ class DuckMind:
             return ImagePart.from_bytes(image, mime_type=mime_type)
         if isinstance(image, str):
             if image.startswith("data:"):
-                return ImagePart(image=image, mime_type=mime_type)
+                return ImagePart.from_url(image)
             if image.startswith(("https://", "http://")):
                 return ImagePart.from_url(image)
             return ImagePart.from_path(image)

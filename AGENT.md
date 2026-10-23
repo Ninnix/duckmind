@@ -12,7 +12,8 @@ Unofficial Python client for https://duck.ai (DuckDuckGo AI Chat).  No API key. 
 - `_durable.py` — standard-library RSA-OAEP public JWK generation for durable streams
 - `_http.py` — standard-library HTTP, cookies, proxies and streaming decompression
 - `models.py` — model aliases, capability map, effort resolution, data types (History, Message, ImagePart, Role)
-- `cli.py` — REPL (duckmind> prompt) + one-shot -p mode
+- `cli.py` — themed interactive REPL and one-shot -p mode
+- `ui.py` — shared banner, prompt, table, picker, line-editor and spinner helpers
 - `exceptions.py` — DuckMindError, RatelimitError, ChallengeError, etc.
 
 ## Key details
@@ -21,6 +22,7 @@ Unofficial Python client for https://duck.ai (DuckDuckGo AI Chat).  No API key. 
 - Rate-limit: ~1 req/15s per IP. One bounded retry loop honors Retry-After; consecutive POSTs wait at least 15 seconds. Status URLs are unique to avoid cached challenges.
 - Warm-up: visits duck.ai homepage and SERP to seed cookies before first chat.
 - Effort: some models may have `fast`, `thinking` levels. resolve_effort() maps user-facing "fast"/"reasoning" to model-specific values. Fast is default; GPT Luna (`gpt-6-luna`) is the default model.
+- Interactive: `/models` picks free models, `/models-all` includes subscription tiers, Tab cycles effort, and Ctrl+W toggles web search.
 
 ## Style
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import mimetypes
+import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Union
 from urllib.parse import urlsplit
@@ -214,6 +215,20 @@ class ImagePart:
 
     @classmethod
     def from_url(cls, url: str, timeout: float = 30) -> "ImagePart":
+        if url.startswith("data:"):
+            match = re.fullmatch(
+                r"data:(image/(?:jpeg|png|gif|webp));base64,([A-Za-z0-9+/]*={0,2})", url
+            )
+            if not match:
+                raise ValueError("Image data must be a supported base64 image")
+            mime_type, encoded = match.groups()
+            try:
+                data = base64.b64decode(encoded, validate=True)
+            except ValueError:
+                raise ValueError("Image data must be valid base64") from None
+            if not data or len(data) > 20 * 1024 * 1024:
+                raise ValueError("Image must be non-empty and 20 MB or smaller")
+            return cls(image=url, mime_type=mime_type)
         parsed = urlsplit(url)
         if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
             raise ValueError("Image URL must use HTTPS")
