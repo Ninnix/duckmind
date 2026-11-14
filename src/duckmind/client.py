@@ -313,7 +313,8 @@ class DuckMind:
         if resp.status_code == 404 and "ERR_MODEL_UNAVAILABLE" in body:
             raise APIError("Model unavailable; choose a current identifier from list_models()", 404, body)
         raise APIError(
-            f"chat failed: HTTP {resp.status_code}", resp.status_code, body
+            f"chat failed: HTTP {resp.status_code}", resp.status_code, body,
+            retry_after=resp.headers.get("Retry-After")
         )
 
     @staticmethod
@@ -356,7 +357,9 @@ class DuckMind:
                 try:
                     obj = json.loads(data)
                 except json.JSONDecodeError:
-                    continue
+                    raise APIError("invalid JSON in completion stream") from None
+                if not isinstance(obj, dict):
+                    raise APIError("invalid completion event")
                 if obj.get("action") == "error":
                     msg = obj.get("type") or obj.get("error") or json.dumps(obj)
                     if obj.get("status") == 429:
@@ -366,6 +369,8 @@ class DuckMind:
                     if msg in ("ERR_CHALLENGE", "ERR_INVALID_CHALLENGE"):
                         raise ChallengeError(str(msg))
                     raise APIError(str(msg), obj.get("status"), data)
+                if obj.get("message") is not None and not isinstance(obj["message"], str):
+                    raise APIError("invalid completion message")
                 if isinstance(obj.get("message"), str) and obj["message"]:
                     saw_message = True
                 yield obj
@@ -388,7 +393,8 @@ class DuckMind:
                     raise
                 last_exc = e
             except APIError as e:
-                if e.status_code is None or e.status_code >= 500:
+                self._pending_hash = None
+                if e.status_code is None or e.status_code in (408, 425) or e.status_code >= 500:
                     if yielded:
                         raise
                     last_exc = e
@@ -403,10 +409,12 @@ class DuckMind:
                 last_exc = e
             if attempt < self.max_retries - 1:
                 delay = self.backoff_base * (2**attempt) + random.uniform(0, 0.25)
-                if isinstance(last_exc, RatelimitError):
-                    delay = max(delay, last_exc.retry_after if last_exc.retry_after is not None else 15.0)
-                    if delay > 60:
-                        raise last_exc
+                retry_after = getattr(last_exc, 'retry_after', None)
+                delay = max(delay, retry_after or 0)
+                if isinstance(last_exc, RatelimitError) and retry_after is None:
+                    delay = max(delay, 15.0)
+                if delay > 60:
+                    raise last_exc
                 time.sleep(delay)
         if last_exc is not None:
             raise last_exc
@@ -425,11 +433,8 @@ class DuckMind:
     ) -> Iterator[str]:
         if remember is None:
             remember = self.history_enabled
-        if remember:
-            self.history.add_user(prompt)
-            messages = self.history.to_messages()
-        else:
-            messages = [Message(role=Role.User, content=prompt).to_dict()]
+        messages = self.history.to_messages() if remember else []
+        messages.append(Message(role=Role.User, content=prompt).to_dict())
         is_mm = self._has_image(messages)
         if model is not None:
             use_model = resolve_model(model)
@@ -457,6 +462,7 @@ class DuckMind:
                 collected.append(chunk)
                 yield chunk
         if remember and collected:
+            self.history.add_user(prompt)
             self.history.add_assistant("".join(collected))
 
     def ask(

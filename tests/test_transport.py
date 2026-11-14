@@ -200,3 +200,51 @@ def test_generated_small_primes_are_prime():
         value = _prime(16)
         assert value.bit_length() == 16
         assert all(value % divisor for divisor in range(2, math.isqrt(value) + 1))
+
+
+def test_server_error_discards_pending_continuation_before_retry(client):
+    attempts = []
+    def attempt(payload):
+        attempts.append(client._pending_hash)
+        if len(attempts) == 1:
+            raise APIError('server unavailable', 503)
+        yield {'message': 'OK'}
+    client._pending_hash = 'spent'
+    with patch.object(client, '_attempt_stream', attempt):
+        assert client.ask('Hi') == 'OK'
+    assert attempts == ['spent', None]
+
+
+def test_failed_turn_does_not_pollute_history(client):
+    client.enable_history()
+    client.history.add_user('Earlier')
+    client.history.add_assistant('Reply')
+    before = client.history.to_messages()
+    with patch.object(client, '_attempt_stream', side_effect=APIError('bad request', 400)):
+        with pytest.raises(APIError):
+            client.ask('Failed prompt')
+    assert client.history.to_messages() == before
+    with patch.object(client, '_attempt_stream', return_value=iter([{'message': 'OK'}])):
+        assert client.ask('Successful prompt') == 'OK'
+    assert len(client.history.to_messages()) == len(before) + 2
+
+
+@pytest.mark.parametrize('event', ['[]', 'broken JSON', '{"message":42}'])
+def test_corrupt_event_cannot_silently_accept_partial_output(client, event):
+    @contextmanager
+    def stream(*args, **kwargs):
+        yield response('data: {"message":"partial"}\n\ndata: '+event+'\n\ndata: [DONE]\n\n')
+    with patch.object(client._client, 'stream', stream), patch.object(client, '_fetch_challenge_header', return_value='challenge'):
+        with pytest.raises(APIError):
+            client.ask('Hi')
+
+
+def test_server_retry_after_is_preserved_without_inline_long_wait(client):
+    with pytest.raises(APIError) as caught:
+        client._raise_for_status(response('busy', 503, {'Retry-After': '120'}))
+    assert caught.value.retry_after == 120
+    with patch.object(client, '_attempt_stream', side_effect=caught.value) as attempt, patch('duckmind.client.time.sleep') as sleep:
+        with pytest.raises(APIError):
+            client.ask('Hi')
+    assert attempt.call_count == 1
+    sleep.assert_not_called()

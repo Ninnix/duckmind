@@ -40,7 +40,9 @@ class APIError(DuckMindError):
         message: str,
         status_code: Optional[int] = None,
         body: Optional[str] = None,
+        *, retry_after=None,
     ):
         super().__init__(message)
         self.status_code = status_code
         self.body = body
+        self.retry_after = RatelimitError("", retry_after=retry_after).retry_after

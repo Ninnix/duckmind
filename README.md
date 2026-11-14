@@ -82,7 +82,7 @@ Duck.ai has retired GPT-4o mini, GPT-5 mini, and Llama Scout. `list_models()` ex
 
 At session start, the client reads the frontend version from Duck.ai's homepage. Set `fe_version=` to override it. Challenges use the `duck.ai` origin. The standard library handles HTTP, cookies, proxies, compressed streams, and public JWK generation. Runtime dependencies are `mini-racer` for JavaScript challenges and `html5lib` for HTML normalization.
 
-Rejected challenges are discarded before retrying. Fresh status URLs prevent cached challenge reuse. Consecutive chat requests share a session and wait at least 15 seconds. HTTP 429 responses honor `Retry-After`; waits above 60 seconds return to the caller. Retries stop at the configured attempt count. If a stream fails after text appears, the error is raised without replaying the text. A stream without its completion marker is rejected.
+Rejected challenges are discarded before retrying. Fresh status URLs prevent cached challenge reuse. Consecutive chat requests share a session and wait at least 15 seconds. HTTP 429 and transient server responses honor `Retry-After`; waits above 60 seconds return to the caller. Retries stop at the configured attempt count. If a stream fails after text appears, the error is raised without replaying the text. A stream without its completion marker, with corrupt JSON, or with invalid message data is rejected. Failed turns do not enter conversation history. Server errors discard pending continuation state before retrying.
 
 ```sh
 pip install -e .
